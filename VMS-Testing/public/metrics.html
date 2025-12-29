@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>System Metrics</title>
+  <style>
+    body { background: #111; color: #eee; font-family: monospace; padding: 20px; }
+    #metrics-output {
+      background: #222;
+      padding: 15px;
+      border-radius: 8px;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+
+<h2>🧭 System Metrics (Live)</h2>
+<div id="metrics-output">Menunggu data...</div>
+
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<script>
+  const metricsEl = document.getElementById("metrics-output");
+  const metricsSocket = io("/metrics", { path: "/streams" });
+
+  // Fungsi untuk konversi KB → GB/TB
+  function formatStorageKB(kb) {
+    if (!kb || isNaN(kb)) return "N/A";
+    const gb = kb / 1024 / 1024; // KB → GB
+    if (gb >= 1024) {
+      return (gb / 1024).toFixed(2) + " TB";
+    }
+    return gb.toFixed(2) + " GB";
+  }
+
+  metricsSocket.on("update", (data) => {
+    try {
+      const cpuPercent = data.cpu?.percent?.toFixed(1) ?? "N/A";
+      const cpuCores = data.cpu?.cores ?? "N/A";
+      const memPercent = data.memory?.percent ?? "N/A";
+      const memTotal = data.memory?.total ? (data.memory.total / 1e9).toFixed(1) : "N/A";
+      const memUsed = data.memory?.used ? (data.memory.used / 1e9).toFixed(1) : "N/A";
+
+      const disk = data.storage;
+      const diskUsed = formatStorageKB(disk?.used);       // langsung KB dari backend
+      const diskAvailable = formatStorageKB(disk?.available);
+      const diskText = disk
+        ? `${disk.percent}% (${disk.fs})`
+        : "N/A";
+
+      const metricsText = `
+    🖥️  CPU: ${cpuPercent}% (${cpuCores} cores)
+    🧠  RAM: ${memPercent}% of ${memTotal} GB
+    📦  RAM Used: ${memUsed} GB
+    💾  Storage: ${diskText}
+    💽  Disk Used: ${diskUsed}
+    💽  Disk Available: ${diskAvailable}
+      `.trim();
+
+      metricsEl.textContent = metricsText;
+    } catch (err) {
+      metricsEl.textContent = "Gagal parsing metrics.";
+      console.error("Metrics error:", err);
+    }
+  });
+</script>
+
+</body>
+</html>

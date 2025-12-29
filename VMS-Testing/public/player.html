@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Timeline Playback by Hour</title>
+  <style>
+    body { background: #111; color: #eee; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; }
+    video { width: 100%; max-height: 500px; background: black; margin-bottom: 10px; border-radius: 8px; box-shadow: 0 0 15px rgba(0, 255, 0, 0.2); }
+    .hour-bar { display: flex; overflow-x: auto; margin: 20px 0; padding: 5px; background: #222; border-radius: 8px; }
+    .hour-block {
+      flex: 0 0 auto;
+      width: 60px;
+      font-size: 18px;
+      text-align: center;
+      padding: 10px 6px;
+      cursor: pointer;
+      border: 1px solid #333;
+      border-radius: 6px;
+      margin: 0 5px;
+      transition: all 0.3s ease;
+    }
+    .hour-block:hover { background: #444; }
+    .hour-block.active { background: #0078d4; border-color: #0078d4; box-shadow: 0 0 10px rgba(0, 120, 212, 0.5); }
+    .hour-block.has-video { background: #107c10; }
+    .hour-block.has-video:hover { background: #19a019; }
+    #slider-container {
+      margin-top: 20px;
+      padding: 10px 0;
+      background: #1a1a1a;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+    }
+    input[type="range"] {
+      width: 100%;
+      height: 18px;
+      -webkit-appearance: none;
+      background: linear-gradient(90deg, #107c10, #1a1a1a);
+      border-radius: 8px;
+      outline: none;
+      box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 24px;
+      height: 24px;
+      background: #0078d4;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2px solid white;
+      box-shadow: 0 0 5px rgba(0, 120, 212, 0.8);
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 24px;
+      height: 24px;
+      background: #0078d4;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2px solid white;
+      box-shadow: 0 0 5px rgba(0, 120, 212, 0.8);
+    }
+    .seek-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 18px;
+      margin-top: 8px;
+      color: #ccc;
+      font-weight: bold;
+      padding: 0 10px;
+    }
+    .filename-indicator {
+      font-size: 18px;
+      margin-top: 15px;
+      color: #0f0;
+      background: rgba(16, 124, 16, 0.2);
+      padding: 10px;
+      border-radius: 6px;
+      font-family: 'Consolas', monospace;
+    }
+    .status-indicator {
+      font-size: 16px;
+      margin-top: 15px;
+      padding: 10px;
+      border-radius: 6px;
+      background: rgba(0, 120, 212, 0.2);
+    }
+    .player-controls {
+      display: flex;
+      gap: 10px;
+      margin-top: 15px;
+    }
+    .player-controls button {
+      padding: 10px 15px;
+      background: #0078d4;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: all 0.2s;
+    }
+    .player-controls button:hover {
+      background: #106ebe;
+      transform: translateY(-2px);
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .camera-info {
+      font-size: 24px;
+      font-weight: bold;
+      color: #0078d4;
+    }
+    .date-display {
+      font-size: 18px;
+      color: #aaa;
+    }
+    h2 {
+      color: #0f0;
+      margin-bottom: 5px;
+      border-bottom: 2px solid #107c10;
+      padding-bottom: 10px;
+    }
+    .progress-container {
+      height: 8px;
+      background: #333;
+      border-radius: 4px;
+      margin-top: 5px;
+      overflow: hidden;
+    }
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #107c10, #19a019);
+      width: 0%;
+      transition: width 0.3s;
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h2>📼 Timeline Playback</h2>
+    <div class="date-display" id="dateDisplay">2025-06-11</div>
+  </div>
+  <div class="camera-info" id="cameraInfo">Hollywood Junction A (HLJA)</div>
+</div>
+
+<video id="player" controls muted poster="data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='450' viewBox='0 0 800 450'%3E%3Crect fill='%23222' width='800' height='450'/%3E%3Cpath fill='%23333' d='M300,200 L370,240 L370,160 Z'/%3E%3Ctext fill='%23555' font-family='monospace' font-size='30' x='50%25' y='80%25' text-anchor='middle'%3ECCTV Feed%3C/text%3E%3C/svg%3E"></video>
+
+<div class="progress-container">
+  <div class="progress-bar" id="progressBar"></div>
+</div>
+
+<div class="hour-bar" id="hourBar"></div>
+<div id="slider-container"></div>
+<div class="filename-indicator" id="fileInfo"></div>
+<div class="status-indicator" id="status">Loading timeline data...</div>
+
+<div class="player-controls">
+  <button id="playBtn">▶ Play</button>
+  <button id="pauseBtn">⏸ Pause</button>
+  <button id="nextBtn">⏭ Next Video</button>
+</div>
+
+<script>
+// Konfigurasi
+const camId = "ENVR";
+const camName = "ENVIRO";
+const date = "2025-07-24";
+const hourBar = document.getElementById("hourBar");
+const sliderContainer = document.getElementById("slider-container");
+const statusEl = document.getElementById("status");
+const fileInfoEl = document.getElementById("fileInfo");
+const videoElement = document.getElementById("player");
+const playBtn = document.getElementById("playBtn");
+const pauseBtn = document.getElementById("pauseBtn");
+const nextBtn = document.getElementById("nextBtn");
+const dateDisplay = document.getElementById("dateDisplay");
+const cameraInfo = document.getElementById("cameraInfo");
+const progressBar = document.getElementById("progressBar");
+const apiURL = `/api/timeline/${camId}?date=${date}`;
+
+// State aplikasi
+let timeline = [];
+let timelineByHour = {};
+let currentSlider = null;
+let currentHour = null;
+let currentFile = null;
+let playbackTimer = null;
+let isDraggingSlider = false;
+
+// Data timeline contoh (dalam aplikasi nyata ini akan diambil dari API)
+let timelineData = {}; 
+
+fetch(apiURL)
+  .then(res => {
+    if (!res.ok) throw new Error("Gagal mengambil data timeline");
+    return res.json();
+  })
+  .then(data => {
+    timelineData = data;
+    initializeTimeline(); // Panggil inisialisasi setelah data diterima
+  })
+  .catch(err => {
+    console.error("Error fetching timeline data:", err);
+    document.getElementById("status").textContent = "Gagal memuat data timeline.";
+  }
+);
+
+// Inisialisasi
+dateDisplay.textContent = date;
+cameraInfo.textContent = `${camName} (${camId})`;
+
+// Simulasi fetch data dari API
+function initializeTimeline() {
+  timeline = timelineData.timeline || [];
+  
+  // Kelompokkan berdasarkan jam
+  timelineByHour = timeline.reduce((acc, item) => {
+    const hour = new Date(item.start).getHours();
+    if (!acc[hour]) acc[hour] = [];
+    acc[hour].push(item);
+    return acc;
+  }, {});
+
+  // Render jam
+  hourBar.innerHTML = '';
+  for (let h = 0; h < 24; h++) {
+    const div = document.createElement("div");
+    div.className = "hour-block";
+    div.textContent = h.toString().padStart(2, '0');
+    if (timelineByHour[h]) div.classList.add("has-video");
+    div.addEventListener("click", () => renderSeekBarForHour(h));
+    hourBar.appendChild(div);
+  }
+
+  // Pilih jam pertama yang memiliki video
+  const firstHourWithVideo = Object.keys(timelineByHour).length > 0 ? 
+    Math.min(...Object.keys(timelineByHour).map(Number)) : 0;
+    
+  renderSeekBarForHour(firstHourWithVideo);
+  statusEl.textContent = "Klik jam untuk menampilkan video. Video siap diputar.";
+}
+
+// Render seekbar untuk jam tertentu
+function renderSeekBarForHour(hour) {
+  // Update state jam saat ini
+  currentHour = hour;
+  
+  // Update kelas aktif pada jam
+  document.querySelectorAll('.hour-block').forEach(el => {
+    el.classList.remove('active');
+  });
+  document.querySelectorAll(`.hour-block`)[hour].classList.add('active');
+
+  const files = (timelineByHour[hour] || []).sort((a, b) => new Date(a.start) - new Date(b.start));
+  if (files.length === 0) {
+    sliderContainer.innerHTML = "<div class='status-indicator'>Tidak ada video pada jam ini</div>";
+    fileInfoEl.textContent = "";
+    videoElement.poster = videoElement.poster; // Reset poster
+    videoElement.src = "";
+    statusEl.textContent = `Tidak ada video pada jam ${hour.toString().padStart(2, '0')}`;
+    return;
+  }
+
+  sliderContainer.innerHTML = "";
+  fileInfoEl.textContent = "";
+
+  const slider = document.createElement("input");
+  slider.type = "range";
+  slider.min = 0;
+  slider.max = 3599; // 59 menit 59 detik
+  slider.step = 1;
+  slider.value = 0;
+  slider.id = "timeline-slider";
+
+  const labels = document.createElement("div");
+  labels.className = "seek-labels";
+  labels.innerHTML = `<span>${hour.toString().padStart(2, '0')}:00:00</span><span>${hour.toString().padStart(2, '0')}:59:59</span>`;
+
+  // Event untuk saat slider digeser
+  slider.addEventListener("input", () => {
+    isDraggingSlider = true;
+    const second = parseInt(slider.value);
+    const realTime = new Date(`${date}T${hour.toString().padStart(2, '0')}:00:00`);
+    realTime.setSeconds(realTime.getSeconds() + second);
+    
+    const match = files.find(f => {
+      const start = new Date(f.start);
+      const end = new Date(f.end);
+      return start <= realTime && realTime < end;
+    });
+
+    const fallback = match || files.find(f => new Date(f.start) > realTime) || files[files.length-1];
+
+    if (fallback) {
+      const offset = match ? (realTime - new Date(fallback.start)) / 1000 : 0;
+      playVideo(fallback, offset);
+      fileInfoEl.textContent = `▶ ${fallback.filename} | ${formatTime(realTime)}`;
+    } else {
+      fileInfoEl.textContent = `Tidak ada video ${formatTime(realTime)}`;
+    }
+  });
+
+  // Saat melepas slider
+  slider.addEventListener("change", () => {
+    isDraggingSlider = false;
+  });
+
+  sliderContainer.appendChild(slider);
+  sliderContainer.appendChild(labels);
+  currentSlider = slider;
+
+  // Auto-play dari detik 0
+  slider.dispatchEvent(new Event('input'));
+}
+
+// Memutar video
+function playVideo(file, seekTime = 0) {
+  if (!file) return;
+  
+  currentFile = file;
+  const url = `/api/video/${camId}/${file.filename}`;
+  
+  // Gunakan video dummy untuk simulasi
+  videoElement.src = url;
+  
+  videoElement.load();
+  videoElement.onloadedmetadata = () => {
+    videoElement.currentTime = seekTime;
+    videoElement.play().catch(e => console.log("Autoplay prevented:", e));
+    statusEl.textContent = `▶ Memutar: ${file.filename} | ${formatTimeFromOffset(seekTime)}`;
+    
+    // Mulai pembaruan seekbar
+    startPlaybackTracking();
+  };
+
+  // Auto-play video berikutnya saat selesai
+  videoElement.onended = () => {
+    const flatTimeline = timeline.slice().sort((a, b) => new Date(a.start) - new Date(b.start));
+    const currentIndex = flatTimeline.findIndex(f => f.filename === file.filename);
+
+    if (currentIndex !== -1 && currentIndex < flatTimeline.length - 1) {
+      const next = flatTimeline[currentIndex + 1];
+      playVideo(next, 0);
+      fileInfoEl.textContent = `▶ ${next.filename} | 00:00`;
+    } else {
+      statusEl.textContent = "▶ Video selesai, tidak ada lanjutan.";
+      stopPlaybackTracking();
+    }
+  };
+}
+
+// Memulai pelacakan pemutaran
+function startPlaybackTracking() {
+  stopPlaybackTracking();
+  
+  playbackTimer = setInterval(() => {
+    if (videoElement.paused || isDraggingSlider) return;
+    
+    // Perbarui slider
+    if (currentSlider && currentFile) {
+      const fileStartTime = new Date(currentFile.start);
+      const currentVideoTime = videoElement.currentTime;
+      const currentAbsoluteTime = new Date(fileStartTime.getTime() + currentVideoTime * 1000);
+      
+      // Hitung detik dalam jam saat ini
+      const secondsInHour = currentAbsoluteTime.getMinutes() * 60 + currentAbsoluteTime.getSeconds();
+      
+      // Perbarui nilai slider
+      currentSlider.value = secondsInHour;
+      
+      // Perbarui label waktu
+      fileInfoEl.textContent = `▶ ${currentFile.filename} | ${formatTime(currentAbsoluteTime)}`;
+      
+      // Perbarui progress bar
+      const progress = (videoElement.currentTime / videoElement.duration) * 100;
+      progressBar.style.width = `${progress}%`;
+    }
+  }, 100);
+}
+
+// Menghentikan pelacakan pemutaran
+function stopPlaybackTracking() {
+  if (playbackTimer) {
+    clearInterval(playbackTimer);
+    playbackTimer = null;
+  }
+}
+
+// Format waktu dari offset
+function formatTimeFromOffset(seconds) {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
+// Format waktu dari objek Date
+function formatTime(date) {
+  return date.toTimeString().split(" ")[0].substring(0, 8);
+}
+
+// Event listeners untuk tombol kontrol
+playBtn.addEventListener("click", () => {
+  if (videoElement.src) {
+    videoElement.play();
+    startPlaybackTracking();
+    statusEl.textContent = "▶ Pemutaran dilanjutkan";
+  }
+});
+
+pauseBtn.addEventListener("click", () => {
+  videoElement.pause();
+  stopPlaybackTracking();
+  statusEl.textContent = "⏸ Pemutaran dijeda";
+});
+
+nextBtn.addEventListener("click", () => {
+  if (!currentFile) return;
+  
+  const flatTimeline = timeline.slice().sort((a, b) => new Date(a.start) - new Date(b.start));
+  const currentIndex = flatTimeline.findIndex(f => f.filename === currentFile.filename);
+
+  if (currentIndex !== -1 && currentIndex < flatTimeline.length - 1) {
+    const next = flatTimeline[currentIndex + 1];
+    playVideo(next, 0);
+    fileInfoEl.textContent = `▶ ${next.filename} | 00:00`;
+  } else {
+    statusEl.textContent = "Tidak ada video berikutnya";
+  }
+});
+
+// Inisialisasi aplikasi
+initializeTimeline();
+</script>
+</body>
+</html>
